@@ -143,6 +143,9 @@ export async function KycReviewView({
               <div>
                 <h3 className="mb-2 text-sm font-semibold">Record a decision</h3>
                 <SchemaForm
+                  // Remount per case so notes typed for one case cannot be
+                  // submitted against the next one.
+                  key={selected.id}
                   fields={fieldsFromSchema(decisionSchema)}
                   action={decideCase.bind(null, selected.id)}
                   submitLabel="Submit decision"
