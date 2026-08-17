@@ -29,6 +29,16 @@ insert fails, the write rolls back. Audit rows cannot be forged by app code, and
 `psql` connection cannot rewrite history. `tests/no-prisma-import.test.ts` fails
 the build if any module other than the data layer imports `@prisma/client`.
 
+**Before/after snapshots are automatic, never opt-in.** `mutate()` hands the
+callback a snapshotting transaction client: every write reads its target rows
+with full (unredacted) visibility inside the same transaction, before and after
+the mutation, and those states become the audit record's `before`/`after`
+(deletes record `after: null`). A write the layer cannot snapshot — an
+`updateMany`/`deleteMany` with no `where`, or a write issued on some other
+client — throws (`SnapshotUnavailableError`, `UnsnapshottedWriteError`) instead
+of logging a partial record, and a `mutate()` that writes nothing throws
+`EmptyMutationError`.
+
 **RBAC has one enforcement point.** Roles live in `src/platform/rbac/roles.ts`.
 `can()` / `authorize()` are the only deciders; pages and server actions call
 `requirePermission()`. Apps declare permissions in their manifest and never

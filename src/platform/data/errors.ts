@@ -24,6 +24,34 @@ export class AuditForgeryError extends Error {
   }
 }
 
+export class SnapshotUnavailableError extends Error {
+  constructor(model: string, operation: string) {
+    super(
+      `Write blocked: ${model}.${operation} cannot produce a before/after ` +
+        `snapshot, so it would be audited without one. Target the rows with a ` +
+        `\`where\` clause.`,
+    );
+    this.name = "SnapshotUnavailableError";
+  }
+}
+
+export class UnsnapshottedWriteError extends Error {
+  constructor(model: string, operation: string) {
+    super(
+      `Write blocked: ${model}.${operation} did not go through the snapshotting ` +
+        `client provided by mutate().`,
+    );
+    this.name = "UnsnapshottedWriteError";
+  }
+}
+
+export class EmptyMutationError extends Error {
+  constructor(action: string) {
+    super(`Mutation "${action}" performed no writes, so there is nothing to audit.`);
+    this.name = "EmptyMutationError";
+  }
+}
+
 export class MissingActorError extends Error {
   constructor(model: string, operation: string) {
     super(

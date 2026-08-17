@@ -18,7 +18,14 @@ describe("audit log is append only at the database level", () => {
       actor: ADMIN,
       action: "append-only.probe",
       resource: "User",
-      fn: async (tx) => tx.user.count(),
+      fn: (tx) =>
+        tx.user.create({
+          data: {
+            email: `probe-${Date.now()}@example.com`,
+            name: "Probe",
+            role: "staff",
+          },
+        }),
     });
 
     const count = await runAsSystem(() => db.auditLog.count());

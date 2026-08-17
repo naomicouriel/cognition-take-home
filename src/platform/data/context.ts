@@ -7,6 +7,8 @@ export type MutationContext = {
   resourceId?: string;
   /** Set only while the data layer itself writes the audit record. */
   writingAudit: boolean;
+  /** Set only while the snapshotting client is executing a write. */
+  snapshotted: boolean;
 };
 
 export type DataContext = {

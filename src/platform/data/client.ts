@@ -7,19 +7,9 @@ import {
   AuditForgeryError,
   MissingActorError,
   RawQueryBlockedError,
+  UnsnapshottedWriteError,
 } from "./errors";
-
-const WRITE_OPERATIONS = new Set([
-  "create",
-  "createMany",
-  "createManyAndReturn",
-  "update",
-  "updateMany",
-  "updateManyAndReturn",
-  "upsert",
-  "delete",
-  "deleteMany",
-]);
+import { WRITE_OPERATIONS } from "./snapshot";
 
 /**
  * Module private. Nothing outside this file may hold the unguarded client, and
@@ -109,8 +99,11 @@ export const prisma = base.$extends({
 
         if (isWrite) {
           if (!ctx.mutation) throw new AuditBypassError(model, operation);
-          if (model === "AuditLog" && !ctx.mutation.writingAudit) {
-            throw new AuditForgeryError();
+          if (model === "AuditLog") {
+            if (!ctx.mutation.writingAudit) throw new AuditForgeryError();
+          } else if (!ctx.mutation.snapshotted) {
+            // Reached the database without the snapshotting client from mutate().
+            throw new UnsnapshottedWriteError(model, operation);
           }
         } else if (model !== "AuditLog") {
           const readPermission = readPermissionFor(model);

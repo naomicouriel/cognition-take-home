@@ -35,7 +35,6 @@ export async function approveAccessRequest(formData: FormData) {
     action: "access_request.approve",
     resource: "AccessRequest",
     resourceId: id,
-    snapshot: (tx) => tx.accessRequest.findUnique({ where: { id } }),
     fn: (tx) =>
       tx.accessRequest.update({
         where: { id },

@@ -3,7 +3,10 @@ import { ADMIN } from "./setup";
 import {
   AuditBypassError,
   AuditForgeryError,
+  EmptyMutationError,
   RawQueryBlockedError,
+  SnapshotUnavailableError,
+  UnsnapshottedWriteError,
   db,
   mutate,
   runAsSystem,
@@ -36,7 +39,6 @@ describe("audited data access layer", () => {
       action: "user.update",
       resource: "User",
       resourceId: created.id,
-      snapshot: (tx) => tx.user.findUnique({ where: { id: created.id } }),
       fn: (tx) =>
         tx.user.update({ where: { id: created.id }, data: { name: "Renamed" } }),
     });
@@ -63,6 +65,84 @@ describe("audited data access layer", () => {
     expect((update.after as { name: string }).name).toBe("Renamed");
   });
 
+  it("snapshots before and after automatically, without the caller asking", async () => {
+    const email = `${unique()}@example.com`;
+
+    const created = await mutate({
+      actor: ADMIN,
+      action: "user.create",
+      resource: "User",
+      fn: (tx) =>
+        tx.user.create({
+          data: { email, name: "Before", role: "staff", phone: "+1 555 1234" },
+        }),
+    });
+
+    // No `snapshot` option anywhere: the data layer captures both states.
+    await mutate({
+      actor: ADMIN,
+      action: "user.promote",
+      resource: "User",
+      fn: (tx) =>
+        tx.user.update({
+          where: { id: created.id },
+          data: { name: "After", role: "reviewer" },
+        }),
+    });
+
+    await mutate({
+      actor: ADMIN,
+      action: "user.delete",
+      resource: "User",
+      fn: (tx) => tx.user.delete({ where: { id: created.id } }),
+    });
+
+    const [create, update, remove] = await runAsSystem(() =>
+      db.auditLog.findMany({
+        where: { resourceId: created.id },
+        orderBy: { at: "asc" },
+      }),
+    );
+
+    expect(create.before).toBeNull();
+    expect(create.after).toMatchObject({ name: "Before", role: "staff" });
+
+    expect(update.before).toMatchObject({ name: "Before", role: "staff" });
+    expect(update.after).toMatchObject({ name: "After", role: "reviewer" });
+    // Snapshots are taken with full visibility, so PII is preserved in audit.
+    expect(update.before).toMatchObject({ phone: "+1 555 1234" });
+
+    expect(remove.before).toMatchObject({ name: "After" });
+    expect(remove.after).toBeNull();
+  });
+
+  it("fails a write that cannot be snapshotted instead of auditing without one", async () => {
+    await expect(
+      mutate({
+        actor: ADMIN,
+        action: "user.rename_everyone",
+        resource: "User",
+        fn: (tx) => tx.user.updateMany({ data: { name: "Nope" } }),
+      }),
+    ).rejects.toBeInstanceOf(SnapshotUnavailableError);
+
+    const renamed = await runAsSystem(() =>
+      db.user.count({ where: { name: "Nope" } }),
+    );
+    expect(renamed).toBe(0);
+  });
+
+  it("refuses a mutation that writes nothing", async () => {
+    await expect(
+      mutate({
+        actor: ADMIN,
+        action: "user.noop",
+        resource: "User",
+        fn: (tx) => tx.user.count(),
+      }),
+    ).rejects.toBeInstanceOf(EmptyMutationError);
+  });
+
   it("blocks writes attempted outside mutate()", async () => {
     await expect(
       runWithActor(ADMIN, () =>
@@ -81,6 +161,21 @@ describe("audited data access layer", () => {
     await expect(
       runWithActor(ADMIN, () => db.user.deleteMany({ where: { role: "staff" } })),
     ).rejects.toBeInstanceOf(AuditBypassError);
+  });
+
+  it("blocks a write that dodges the snapshotting client inside a mutation", async () => {
+    await expect(
+      mutate({
+        actor: ADMIN,
+        action: "user.sneak",
+        resource: "User",
+        // `db` is not the transaction client mutate() handed to us.
+        fn: () =>
+          db.user.create({
+            data: { email: `${unique()}@example.com`, name: "Sneak", role: "staff" },
+          }),
+      }),
+    ).rejects.toBeInstanceOf(UnsnapshottedWriteError);
   });
 
   it("blocks raw SQL, which would bypass audit and PII gating", () => {

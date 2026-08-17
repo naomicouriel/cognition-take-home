@@ -5,9 +5,10 @@ import {
   currentContext,
   runAsSystem,
   runInMutation,
-  runRaw,
   runWithActor,
 } from "./context";
+import { EmptyMutationError } from "./errors";
+import { auditingClient, type WriteSnapshot } from "./snapshot";
 
 export { runAsSystem, runWithActor, currentActor };
 export * from "./errors";
@@ -26,20 +27,16 @@ export type MutateOptions<T> = {
   /** Resource type, e.g. "User". */
   resource: string;
   resourceId?: string;
-  /**
-   * Optional snapshot reader. Runs before and after the mutation with full
-   * (unredacted) visibility so the audit record has real before/after values.
-   */
-  snapshot?: (tx: TransactionClient) => Promise<unknown>;
   fn: (tx: TransactionClient) => Promise<T>;
 };
 
 /**
  * The only write path in the platform. The mutation and its audit record are
- * committed in the same transaction, so an unaudited write cannot exist.
+ * committed in the same transaction, so an unaudited write cannot exist, and
+ * every write is snapshotted before and after inside that transaction.
  */
 export async function mutate<T>(options: MutateOptions<T>): Promise<T> {
-  const { actor, action, resource, resourceId, snapshot, fn } = options;
+  const { actor, action, resource, resourceId, fn } = options;
 
   return runWithActor(actor, () =>
     prisma.$transaction(async (tx) => {
@@ -49,13 +46,17 @@ export async function mutate<T>(options: MutateOptions<T>): Promise<T> {
         resource,
         resourceId,
         writingAudit: false,
+        snapshotted: false,
       };
 
-      const before = snapshot ? await runRaw(() => snapshot(tx)) : null;
-      const result = await runInMutation(ctx, mutation, () => fn(tx));
-      const after = snapshot
-        ? await runRaw(() => snapshot(tx))
-        : plainOrNull(result);
+      const snapshots: WriteSnapshot[] = [];
+      const result = await runInMutation(ctx, mutation, () =>
+        fn(auditingClient(tx, mutation, snapshots)),
+      );
+      if (snapshots.length === 0) throw new EmptyMutationError(action);
+
+      const before = collapse(snapshots, "before");
+      const after = collapse(snapshots, "after");
 
       mutation.writingAudit = true;
       await runInMutation(ctx, mutation, () =>
@@ -65,7 +66,8 @@ export async function mutate<T>(options: MutateOptions<T>): Promise<T> {
             actorEmail: actor.email,
             action,
             resource,
-            resourceId: resourceId ?? inferId(result) ?? inferId(after),
+            resourceId:
+              resourceId ?? inferId(result) ?? inferId(after) ?? inferId(before),
             before: toJson(before),
             after: toJson(after),
           },
@@ -86,8 +88,14 @@ function inferId(value: unknown): string | undefined {
   return undefined;
 }
 
-function plainOrNull(value: unknown) {
-  return value && typeof value === "object" ? value : null;
+/** One write per mutation is the common case; keep the audit record readable. */
+function collapse(snapshots: WriteSnapshot[], side: "before" | "after") {
+  if (snapshots.length === 1) return snapshots[0][side];
+  return snapshots.map((snapshot) => ({
+    model: snapshot.model,
+    operation: snapshot.operation,
+    [side]: snapshot[side],
+  }));
 }
 
 function toJson(value: unknown) {
