@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Platform layer (modular monolith)
 
-## Getting Started
+Next.js App Router monolith that hosts many small internal apps. The platform
+owns auth, RBAC, audit, PII gating, nav and data access; app modules only
+declare what they need.
 
-First, run the development server:
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run setup        # docker compose postgres + migrate + generate + seed
+npm run dev          # http://localhost:3000
+npm test             # requires the database from `npm run db:up`
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Seeded users (local dev credentials provider, password `password`):
+`admin@example.com`, `reviewer@example.com`, `staff@example.com`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Guarantees
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Every write is audited.** `src/platform/data` exports `db` (reads) and
+`mutate()` (writes). The Prisma client is module private and extended so that
+any write operation outside a `mutate()` scope throws `AuditBypassError`; raw
+SQL helpers throw `RawQueryBlockedError`. `mutate()` writes the mutation and its
+audit record (actor, action, resource, before, after, timestamp) in a single
+transaction, so a write cannot exist without its audit record — if the audit
+insert fails, the write rolls back. Audit rows cannot be forged by app code, and
+`audit_log` is append only at the database level via triggers, so even a direct
+`psql` connection cannot rewrite history. `tests/no-prisma-import.test.ts` fails
+the build if any module other than the data layer imports `@prisma/client`.
 
-## Learn More
+**RBAC has one enforcement point.** Roles live in `src/platform/rbac/roles.ts`.
+`can()` / `authorize()` are the only deciders; pages and server actions call
+`requirePermission()`. Apps declare permissions in their manifest and never
+decide.
 
-To learn more about Next.js, take a look at the following resources:
+**PII gating is server side.** Manifests declare `piiFields: { field:
+permission }`. The data layer drops those columns from the query itself
+(`omit` / pruned `select`) for actors without the permission and strips them
+defensively from relation payloads, so the bytes never leave the server. UI
+hiding (`<Can>`) is convenience only.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Layout
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/platform/data      audited data access layer (db, mutate, PII gating)
+src/platform/rbac      roles config + single enforcement point
+src/platform/auth      Auth.js: generic OIDC + local dev credentials
+src/platform/manifest  app manifest zod schema + registry (nav, PII policy)
+src/platform/ui        NavShell, DataTable, SchemaForm, DetailPanel, Can
+src/apps/<key>         app modules (manifest, view, actions)
+src/app/apps/<key>     thin route files
+scripts/new-app.ts     scaffolding CLI
+```
 
-## Deploy on Vercel
+## New app
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run new:app -- inspections --label "Inspections"
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Creates the manifest, view, actions and route, regenerates the app registry, and
+the app appears in the nav for any role holding `inspections.read` (grant it in
+`src/platform/rbac/roles.ts`).
+
+## Auth
+
+`ENABLE_DEV_CREDENTIALS=true` enables the local dev provider. Setting
+`OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` enables a standards
+only OIDC provider against any IdP; disable dev credentials in production. Users
+arriving from the IdP are provisioned through `mutate()`, so provisioning is
+audited too.

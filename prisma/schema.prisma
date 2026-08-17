@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         String
+  // PII fields: gated server side by the policy declared in app manifests.
+  phone        String?
+  nationalId   String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+
+  accessRequests AccessRequest[]
+}
+
+/// Platform-level approvable resource. Used by the demo app to exercise the
+/// approval action; apps declare their own resources.
+model AccessRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  requestedRole String
+  reason      String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+}
+
+/// Append only. Enforced by database triggers (see migration) and by the fact
+/// that the only write path in the application is `mutate()`.
+model AuditLog {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  actorId    String
+  actorEmail String
+  action     String
+  resource   String
+  resourceId String?
+  before     Json?
+  after      Json?
+
+  @@index([resource, resourceId])
+  @@index([actorId])
+  @@map("audit_log")
+}
