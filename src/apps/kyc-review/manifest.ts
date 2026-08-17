@@ -3,16 +3,32 @@ import { defineApp } from "@/platform/manifest/schema";
 export const manifest = defineApp({
   key: "kyc-review",
   name: "KYC Review",
-  description: "",
+  description:
+    "Queue of pending customer verification cases with document review and an audited approve/reject decision.",
   // Declared, not decided: the platform enforces these.
-  permissions: ["kyc_review.read"],
+  permissions: ["kyc_review.read", "kyc_review.decide"],
   nav: {
     label: "KYC Review",
     path: "/apps/kyc-review",
-    order: 100,
+    order: 20,
     permission: "kyc_review.read",
   },
-  // Declare data resources and their PII fields here; the data access layer
-  // gates reads and strips PII fields server side.
-  resources: [],
+  resources: [
+    {
+      model: "KycCase",
+      readPermission: "kyc_review.read",
+      piiFields: {
+        customerName: "pii.customer_name",
+        documentNumber: "pii.government_id",
+        dateOfBirth: "pii.date_of_birth",
+      },
+    },
+    {
+      model: "KycDocument",
+      readPermission: "kyc_review.read",
+      piiFields: {},
+    },
+  ],
 });
+
+export const DECIDE_PERMISSION = "kyc_review.decide";

@@ -15,7 +15,7 @@ npm test             # requires the database from `npm run db:up`
 
 Seeded users (local dev credentials provider, password `password`):
 `admin@example.com`, `platform-admin@example.com`, `reviewer@example.com`,
-`staff@example.com`.
+`staff@example.com`, `compliance@example.com` (KYC review queue).
 
 ## Guarantees
 
