@@ -57,8 +57,12 @@ export const authConfig: NextAuthConfig = {
     async jwt({ token, user }) {
       const email = (user?.email ?? token.email)?.toLowerCase();
       if (!email) return token;
-      // Provisioning an IdP user is a write, so it goes through the audited path.
-      const record = await ensureUser(email, user?.name ?? token.name ?? email);
+      // Provisioning only happens at sign-in: a token whose user has since been
+      // deleted must lose access, not silently recreate the account.
+      const record = user
+        ? await ensureUser(email, user.name ?? email)
+        : await runAsSystem(() => db.user.findUnique({ where: { email } }));
+      if (!record) return { ...token, sub: undefined, email: undefined, role: undefined };
       token.sub = record.id;
       token.email = record.email;
       token.name = record.name;
@@ -66,6 +70,13 @@ export const authConfig: NextAuthConfig = {
       return token;
     },
     async session({ session, token }) {
+      // No subject means the account no longer exists: leave the session
+      // without an identity so `currentUser()` resolves to null.
+      if (!token.sub || !token.email) {
+        session.user.id = "";
+        session.user.email = "";
+        return session;
+      }
       session.user.id = String(token.sub);
       session.user.role = isRoleName(String(token.role))
         ? (token.role as RoleName)

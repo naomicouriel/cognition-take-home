@@ -1,4 +1,4 @@
-import { runRaw } from "./context";
+import { currentContext, runInMutation, runRaw } from "./context";
 import { SnapshotUnavailableError } from "./errors";
 import type { MutationContext } from "./context";
 import type { TransactionClient } from "./client";
@@ -26,6 +26,15 @@ const REQUIRES_BEFORE = new Set([
 ]);
 
 const DELETES = new Set(["delete", "deleteMany"]);
+
+/** Operations returning a set of rows rather than a single row. */
+const MANY = new Set([
+  "createMany",
+  "createManyAndReturn",
+  "updateMany",
+  "updateManyAndReturn",
+  "deleteMany",
+]);
 
 export type WriteSnapshot = {
   model: string;
@@ -87,20 +96,18 @@ function wrapDelegate(
       const operation = property;
       return async (args: Record<string, unknown> = {}) => {
         const before = await captureBefore(model, operation, delegate, args);
-        const ids = idsOf(before);
 
-        mutation.snapshotted = true;
-        let result: unknown;
-        try {
-          result = await (value as (a?: unknown) => Promise<unknown>).call(
-            target,
-            args,
-          );
-        } finally {
-          mutation.snapshotted = false;
-        }
+        // The marker lives in a context scope around this one query, so it is
+        // invisible to any other write — including one issued concurrently on
+        // another client inside the same mutate().
+        const ctx = currentContext()!;
+        const result = await runInMutation(
+          ctx,
+          { ...mutation, snapshotted: true },
+          () => (value as (a?: unknown) => Promise<unknown>).call(target, args),
+        );
 
-        const after = await captureAfter(operation, delegate, ids, result);
+        const after = await captureAfter(operation, delegate, before, result);
         if (before === undefined || after === undefined) {
           throw new SnapshotUnavailableError(model, operation);
         }
@@ -132,15 +139,20 @@ async function captureBefore(
 async function captureAfter(
   operation: string,
   delegate: Delegate,
-  ids: unknown[],
+  before: unknown,
   result: unknown,
 ): Promise<unknown> {
+  // The row is gone: `null` is the state, not a missing snapshot.
   if (DELETES.has(operation)) return null;
 
-  const targetIds = ids.length > 0 ? ids : idsOf(result);
+  const beforeIds = idsOf(before);
+  const targetIds = beforeIds.length > 0 ? beforeIds : idsOf(result);
   if (targetIds.length === 0) {
-    // Nothing identifiable was written (e.g. an update that matched no rows).
-    return null;
+    // A bulk update that matched nothing genuinely changed no rows.
+    if (Array.isArray(before) && before.length === 0) return [];
+    // Otherwise the written rows are unidentifiable (e.g. `createMany`, whose
+    // result is only a count): refuse rather than audit an empty after state.
+    return undefined;
   }
   const rows = (await runRaw(() =>
     delegate.findMany({ where: { id: { in: targetIds } } }),
@@ -149,10 +161,7 @@ async function captureAfter(
 }
 
 function one(operation: string, rows: Row[]): unknown {
-  if (operation.endsWith("Many") || operation.endsWith("ManyAndReturn")) {
-    return rows;
-  }
-  return rows[0] ?? null;
+  return MANY.has(operation) ? rows : (rows[0] ?? null);
 }
 
 function idsOf(value: unknown): unknown[] {

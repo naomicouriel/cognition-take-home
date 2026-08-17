@@ -24,6 +24,16 @@ export class AuditForgeryError extends Error {
   }
 }
 
+export class PiiFieldForbiddenError extends Error {
+  constructor(model: string, fields: string[]) {
+    super(
+      `This role may not read ${fields.map((f) => `${model}.${f}`).join(", ")}, ` +
+        `and the query selected nothing else.`,
+    );
+    this.name = "PiiFieldForbiddenError";
+  }
+}
+
 export class SnapshotUnavailableError extends Error {
   constructor(model: string, operation: string) {
     super(

@@ -32,4 +32,13 @@ describe("no unguarded Prisma access", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it("app modules may not use runAsSystem, which skips RBAC and PII gating", () => {
+    const root = process.cwd();
+    const offenders = walk(join(root, "src", "apps")).filter((file) =>
+      /\brunAsSystem\b/.test(readFileSync(file, "utf8")),
+    );
+
+    expect(offenders).toEqual([]);
+  });
 });

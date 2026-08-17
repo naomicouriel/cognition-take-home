@@ -6,6 +6,7 @@ import {
   AuditBypassError,
   AuditForgeryError,
   MissingActorError,
+  PiiFieldForbiddenError,
   RawQueryBlockedError,
   UnsnapshottedWriteError,
 } from "./errors";
@@ -39,13 +40,43 @@ type AnyArgs = Record<string, unknown> & {
   omit?: Record<string, boolean>;
 };
 
+/**
+ * Operations that return records, and therefore accept `select`/`omit`.
+ * `count`, `aggregate`, `groupBy` and the `*Many` writes do not, and Prisma
+ * rejects those arguments outright.
+ */
+const RECORD_OPERATIONS = new Set([
+  "findUnique",
+  "findUniqueOrThrow",
+  "findFirst",
+  "findFirstOrThrow",
+  "findMany",
+  "create",
+  "createManyAndReturn",
+  "update",
+  "updateManyAndReturn",
+  "upsert",
+  "delete",
+]);
+
 /** Keep the bytes in the database: drop PII columns from the query itself. */
-function gateArgs(model: string, args: AnyArgs, actor: Actor): AnyArgs {
+function gateArgs(
+  model: string,
+  operation: string,
+  args: AnyArgs,
+  actor: Actor,
+): AnyArgs {
   const forbidden = forbiddenFields(model, actor);
   if (forbidden.length === 0) return args;
+  // Non-record operations return counts, not columns, so there is nothing to
+  // redact and nowhere to put `omit`.
+  if (!RECORD_OPERATIONS.has(operation)) return args;
   if (args.select) {
     const select = { ...args.select };
     for (const field of forbidden) delete select[field];
+    if (Object.keys(select).length === 0) {
+      throw new PiiFieldForbiddenError(model, forbidden);
+    }
     return { ...args, select };
   }
   const omit = { ...(args.omit ?? {}) };
@@ -112,7 +143,7 @@ export const prisma = base.$extends({
 
         const gated = ctx.raw
           ? (args as AnyArgs)
-          : gateArgs(model, args as AnyArgs, actor);
+          : gateArgs(model, operation, args as AnyArgs, actor);
         const result = await query(gated);
         if (ctx.raw) return result;
         return stripResult(result, allForbiddenFieldNames(actor));

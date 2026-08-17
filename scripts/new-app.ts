@@ -12,11 +12,12 @@ const appsDir = join(root, "src", "apps");
 const routesDir = join(root, "src", "app", "apps");
 
 function parseArgs(argv: string[]) {
-  const positional = argv.filter((a) => !a.startsWith("--"));
-  const key = positional[0];
   const labelIndex = argv.indexOf("--label");
   const label = labelIndex >= 0 ? argv[labelIndex + 1] : undefined;
-  return { key, label };
+  const positional = argv.filter(
+    (a, i) => !a.startsWith("--") && !(labelIndex >= 0 && i === labelIndex + 1),
+  );
+  return { key: positional[0], label };
 }
 
 const { key, label } = parseArgs(process.argv.slice(2));

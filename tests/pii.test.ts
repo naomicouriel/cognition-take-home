@@ -1,6 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ADMIN, REVIEWER, STAFF } from "./setup";
-import { db, mutate, runAsSystem, runWithActor } from "@/platform/data";
+import {
+  PiiFieldForbiddenError,
+  db,
+  mutate,
+  runAsSystem,
+  runWithActor,
+} from "@/platform/data";
 import { ForbiddenError } from "@/platform/rbac";
 
 const email = `pii-${Date.now()}@example.com`;
@@ -52,6 +58,21 @@ describe("field level PII gating", () => {
     );
     expect(selected).not.toHaveProperty("phone");
     expect(selected).not.toHaveProperty("nationalId");
+  });
+
+  it("refuses a query that selects only restricted fields", async () => {
+    await expect(
+      runWithActor(STAFF, () =>
+        db.user.findUnique({ where: { email }, select: { nationalId: true } }),
+      ),
+    ).rejects.toBeInstanceOf(PiiFieldForbiddenError);
+  });
+
+  it("still serves aggregates to restricted roles", async () => {
+    // Redaction must not turn `count` into a Prisma argument error.
+    await expect(runWithActor(STAFF, () => db.user.count())).resolves.toBeTypeOf(
+      "number",
+    );
   });
 
   it("cannot be defeated by a relation include", async () => {

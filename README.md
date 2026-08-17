@@ -34,8 +34,10 @@ callback a snapshotting transaction client: every write reads its target rows
 with full (unredacted) visibility inside the same transaction, before and after
 the mutation, and those states become the audit record's `before`/`after`
 (deletes record `after: null`). A write the layer cannot snapshot — an
-`updateMany`/`deleteMany` with no `where`, or a write issued on some other
-client — throws (`SnapshotUnavailableError`, `UnsnapshottedWriteError`) instead
+`updateMany`/`deleteMany` with no `where`, a `createMany` (its result is only a
+count, so the created rows are unidentifiable; use `createManyAndReturn`), or a
+write issued on some other client — throws (`SnapshotUnavailableError`,
+`UnsnapshottedWriteError`) instead
 of logging a partial record, and a `mutate()` that writes nothing throws
 `EmptyMutationError`.
 
