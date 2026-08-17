@@ -33,6 +33,24 @@ model AccessRequest {
   createdAt   DateTime @default(now())
 }
 
+/// Owned by the feature-flags app module (src/apps/feature-flags).
+model FeatureFlag {
+  id             String   @id @default(cuid())
+  key            String
+  name           String
+  description    String
+  environment    String
+  enabled        Boolean  @default(false)
+  owner          String
+  lastModifiedBy String
+  lastModifiedAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([key, environment])
+  @@index([environment, enabled])
+  @@map("feature_flag")
+}
+
 /// Append only. Enforced by database triggers (see migration) and by the fact
 /// that the only write path in the application is `mutate()`.
 model AuditLog {

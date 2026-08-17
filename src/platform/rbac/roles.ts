@@ -6,13 +6,19 @@ export const PERMISSION_WILDCARD = "*" as const;
 
 export const ROLES = {
   admin: [PERMISSION_WILDCARD],
+  platform_admin: [
+    "directory.read",
+    "feature_flags.read",
+    "feature_flags.toggle",
+  ],
   reviewer: [
     "directory.read",
     "pii.contact",
     "access_request.read",
     "access_request.approve",
+    "feature_flags.read",
   ],
-  staff: ["directory.read", "access_request.read"],
+  staff: ["directory.read", "access_request.read", "feature_flags.read"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type RoleName = keyof typeof ROLES;
