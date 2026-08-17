@@ -132,7 +132,7 @@ export const prisma = base.$extends({
           if (!ctx.mutation) throw new AuditBypassError(model, operation);
           if (model === "AuditLog") {
             if (!ctx.mutation.writingAudit) throw new AuditForgeryError();
-          } else if (ctx.mutation.snapshotting === 0) {
+          } else if (!ctx.mutation.snapshotted) {
             // Reached the database without the snapshotting client from mutate().
             throw new UnsnapshottedWriteError(model, operation);
           }

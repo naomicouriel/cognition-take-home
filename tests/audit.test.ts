@@ -217,6 +217,39 @@ describe("audited data access layer", () => {
     ).rejects.toBeInstanceOf(UnsnapshottedWriteError);
   });
 
+  it("blocks the dodging write even while a snapshotted write is in flight", async () => {
+    const target = await mutate({
+      actor: ADMIN,
+      action: "user.create",
+      resource: "User",
+      fn: (tx) =>
+        tx.user.create({
+          data: { email: `${unique()}@example.com`, name: "Target", role: "staff" },
+        }),
+    });
+    const sneaked = `${unique()}@example.com`;
+
+    await expect(
+      mutate({
+        actor: ADMIN,
+        action: "user.sneak_concurrent",
+        resource: "User",
+        fn: (tx) =>
+          Promise.all([
+            tx.user.update({ where: { id: target.id }, data: { name: "Renamed" } }),
+            db.user.create({
+              data: { email: sneaked, name: "Sneak", role: "staff" },
+            }),
+          ]),
+      }),
+    ).rejects.toBeInstanceOf(UnsnapshottedWriteError);
+
+    const escaped = await runAsSystem(() =>
+      db.user.findUnique({ where: { email: sneaked } }),
+    );
+    expect(escaped).toBeNull();
+  });
+
   it("blocks raw SQL, which would bypass audit and PII gating", () => {
     expect(() => db.$executeRawUnsafe("UPDATE \"User\" SET name = 'x'")).toThrow(
       RawQueryBlockedError,

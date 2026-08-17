@@ -1,4 +1,4 @@
-import { runRaw } from "./context";
+import { currentContext, runInMutation, runRaw } from "./context";
 import { SnapshotUnavailableError } from "./errors";
 import type { MutationContext } from "./context";
 import type { TransactionClient } from "./client";
@@ -97,18 +97,15 @@ function wrapDelegate(
       return async (args: Record<string, unknown> = {}) => {
         const before = await captureBefore(model, operation, delegate, args);
 
-        // A counter, not a flag: concurrent writes inside one mutate() must not
-        // clear each other's marker.
-        mutation.snapshotting += 1;
-        let result: unknown;
-        try {
-          result = await (value as (a?: unknown) => Promise<unknown>).call(
-            target,
-            args,
-          );
-        } finally {
-          mutation.snapshotting -= 1;
-        }
+        // The marker lives in a context scope around this one query, so it is
+        // invisible to any other write — including one issued concurrently on
+        // another client inside the same mutate().
+        const ctx = currentContext()!;
+        const result = await runInMutation(
+          ctx,
+          { ...mutation, snapshotted: true },
+          () => (value as (a?: unknown) => Promise<unknown>).call(target, args),
+        );
 
         const after = await captureAfter(operation, delegate, before, result);
         if (before === undefined || after === undefined) {

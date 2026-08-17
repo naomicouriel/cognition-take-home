@@ -15,7 +15,7 @@ function parseArgs(argv: string[]) {
   const labelIndex = argv.indexOf("--label");
   const label = labelIndex >= 0 ? argv[labelIndex + 1] : undefined;
   const positional = argv.filter(
-    (a, i) => !a.startsWith("--") && i !== labelIndex + 1,
+    (a, i) => !a.startsWith("--") && !(labelIndex >= 0 && i === labelIndex + 1),
   );
   return { key: positional[0], label };
 }

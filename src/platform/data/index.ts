@@ -46,7 +46,7 @@ export async function mutate<T>(options: MutateOptions<T>): Promise<T> {
         resource,
         resourceId,
         writingAudit: false,
-        snapshotting: 0,
+        snapshotted: false,
       };
 
       const snapshots: WriteSnapshot[] = [];

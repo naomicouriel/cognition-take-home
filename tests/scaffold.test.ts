@@ -7,12 +7,17 @@ const root = process.cwd();
 const key = "scaffold-probe";
 const appDir = join(root, "src", "apps", key);
 const routeDir = join(root, "src", "app", "apps", key);
+const bare = "scaffold-bare";
+const bareAppDir = join(root, "src", "apps", bare);
+const bareRouteDir = join(root, "src", "app", "apps", bare);
 const registryPath = join(root, "src", "apps", "registry.ts");
 const registryBefore = readFileSync(registryPath, "utf8");
 
 afterAll(() => {
   rmSync(appDir, { recursive: true, force: true });
   rmSync(routeDir, { recursive: true, force: true });
+  rmSync(bareAppDir, { recursive: true, force: true });
+  rmSync(bareRouteDir, { recursive: true, force: true });
   writeFileSync(registryPath, registryBefore);
 });
 
@@ -35,5 +40,15 @@ describe("scaffolding CLI", () => {
 
     const generated = readFileSync(join(appDir, "manifest.ts"), "utf8");
     expect(generated).toContain("scaffold_probe.read");
+  });
+
+  it("takes the key from a bare argument, with no label", () => {
+    execFileSync("npx", ["tsx", "scripts/new-app.ts", bare], {
+      cwd: root,
+      encoding: "utf8",
+    });
+
+    expect(existsSync(join(bareAppDir, "manifest.ts"))).toBe(true);
+    expect(existsSync(join(bareRouteDir, "page.tsx"))).toBe(true);
   });
 });
