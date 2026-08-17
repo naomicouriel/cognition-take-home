@@ -19,7 +19,9 @@ export const manifest = defineApp({
       readPermission: "kyc_review.read",
       piiFields: {
         customerName: "pii.customer_name",
-        documentNumber: "pii.government_id",
+        // Deliberately not the directory's `pii.government_id`: permission
+        // names are global, so sharing it would also hand out `User.nationalId`.
+        documentNumber: "pii.kyc_document_number",
         dateOfBirth: "pii.date_of_birth",
       },
     },

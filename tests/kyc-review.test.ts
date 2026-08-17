@@ -43,9 +43,16 @@ describe("KYC review queue", () => {
   it("declares the case PII fields in the manifest policy", () => {
     expect(piiPolicy().KycCase).toEqual({
       customerName: "pii.customer_name",
-      documentNumber: "pii.government_id",
+      documentNumber: "pii.kyc_document_number",
       dateOfBirth: "pii.date_of_birth",
     });
+  });
+
+  it("does not leak directory national IDs to the compliance reviewer", async () => {
+    const user = await runWithActor(COMPLIANCE, () =>
+      db.user.findFirst({ where: { email: "staff@example.com" } }),
+    );
+    expect(user).not.toHaveProperty("nationalId");
   });
 
   it("strips PII server side for a role that may read the queue", async () => {

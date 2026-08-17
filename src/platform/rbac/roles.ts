@@ -31,7 +31,7 @@ export const ROLES = {
     "kyc_review.read",
     "kyc_review.decide",
     "pii.customer_name",
-    "pii.government_id",
+    "pii.kyc_document_number",
     "pii.date_of_birth",
   ],
   staff: ["directory.read", "access_request.read", "feature_flags.read"],
