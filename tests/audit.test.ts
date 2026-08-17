@@ -132,6 +132,45 @@ describe("audited data access layer", () => {
     expect(renamed).toBe(0);
   });
 
+  it("refuses a bulk create, whose result cannot identify what was written", async () => {
+    await expect(
+      mutate({
+        actor: ADMIN,
+        action: "user.bulk_create",
+        resource: "User",
+        fn: (tx) =>
+          tx.user.createMany({
+            data: [
+              { email: `${unique()}@example.com`, name: "A", role: "staff" },
+              { email: `${unique()}@example.com`, name: "B", role: "staff" },
+            ],
+          }),
+      }),
+    ).rejects.toBeInstanceOf(SnapshotUnavailableError);
+  });
+
+  it("snapshots concurrent writes in one mutation independently", async () => {
+    const first = `${unique()}@example.com`;
+    const second = `${unique()}@example.com`;
+
+    const created = await mutate({
+      actor: ADMIN,
+      action: "user.create_pair",
+      resource: "User",
+      fn: async (tx) =>
+        Promise.all([
+          tx.user.create({ data: { email: first, name: "One", role: "staff" } }),
+          tx.user.create({ data: { email: second, name: "Two", role: "staff" } }),
+        ]),
+    });
+
+    const entry = await runAsSystem(() =>
+      db.auditLog.findFirst({ where: { action: "user.create_pair" } }),
+    );
+    expect(created).toHaveLength(2);
+    expect(entry?.after).toHaveLength(2);
+  });
+
   it("refuses a mutation that writes nothing", async () => {
     await expect(
       mutate({
