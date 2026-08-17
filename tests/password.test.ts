@@ -17,6 +17,26 @@ describe("local dev password hashing", () => {
     expect(verifyPassword("hunter3", legacy)).toBe(false);
   });
 
+  it("keeps verifying hashes written at a lower cost than today's", () => {
+    // What an earlier PARAMS.N would have produced; raising the cost must not
+    // lock existing accounts out.
+    const salt = "c".repeat(32);
+    const hash = scryptSync("hunter2", salt, 64, {
+      N: 16384,
+      r: 8,
+      p: 1,
+    }).toString("hex");
+
+    expect(verifyPassword("hunter2", `scrypt$16384$8$1$${salt}$${hash}`)).toBe(
+      true,
+    );
+  });
+
+  it("rejects a legacy value whose key length is out of bounds", () => {
+    const salt = "d".repeat(32);
+    expect(verifyPassword("hunter2", `${salt}:${"ab".repeat(200)}`)).toBe(false);
+  });
+
   it("rejects a stored value rather than throwing when it is unusable", () => {
     const salt = "b".repeat(32);
     const hash = scryptSync("hunter2", salt, 64).toString("hex");
