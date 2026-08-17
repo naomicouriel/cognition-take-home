@@ -18,10 +18,12 @@ export async function FeatureFlagsView({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const actor = await requirePermission(manifest.nav.permission);
-  const filters = flagFiltersSchema.parse({
-    environment: first(searchParams?.environment),
-    state: first(searchParams?.state),
-  });
+  // A stale or hand-edited link should show an unfiltered list, not a 500.
+  const filters: FlagFilters =
+    flagFiltersSchema.safeParse({
+      environment: first(searchParams?.environment),
+      state: first(searchParams?.state),
+    }).data ?? {};
 
   const flags = await asActor(actor, () =>
     db.featureFlag.findMany({

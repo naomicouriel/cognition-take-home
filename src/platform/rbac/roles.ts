@@ -7,6 +7,10 @@ export const PERMISSION_WILDCARD = "*" as const;
 export const ROLES = {
   admin: [PERMISSION_WILDCARD],
   platform_admin: [
+    // The login page redirects everyone to /apps/directory, so every role
+    // needs to be able to render it.
+    "directory.read",
+    "access_request.read",
     "feature_flags.read",
     "feature_flags.toggle",
   ],
