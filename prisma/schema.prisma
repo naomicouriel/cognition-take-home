@@ -51,6 +51,40 @@ model FeatureFlag {
   @@map("feature_flag")
 }
 
+/// KYC review queue (app: kyc-review). `customerName`, `documentNumber` and
+/// `dateOfBirth` are PII; the policy lives in the app manifest.
+model KycCase {
+  id             String    @id @default(cuid())
+  reference      String    @unique
+  customerName   String
+  documentNumber String
+  dateOfBirth    DateTime
+  country        String
+  status         String    @default("pending")
+  riskLevel      String
+  riskNotes      String
+  submittedAt    DateTime  @default(now())
+  decidedAt      DateTime?
+  decidedByEmail String?
+  decisionNote   String?
+
+  documents KycDocument[]
+
+  @@index([status, riskLevel])
+}
+
+model KycDocument {
+  id         String   @id @default(cuid())
+  caseId     String
+  case       KycCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  kind       String
+  fileName   String
+  issuer     String
+  uploadedAt DateTime @default(now())
+
+  @@index([caseId])
+}
+
 /// Append only. Enforced by database triggers (see migration) and by the fact
 /// that the only write path in the application is `mutate()`.
 model AuditLog {

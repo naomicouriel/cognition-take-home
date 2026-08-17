@@ -2,5 +2,6 @@
 import type { AppManifest } from "@/platform/manifest/schema";
 import { manifest as directory } from "./directory/manifest";
 import { manifest as featureFlags } from "./feature-flags/manifest";
+import { manifest as kycReview } from "./kyc-review/manifest";
 
-export const apps: AppManifest[] = [directory, featureFlags];
+export const apps: AppManifest[] = [directory, featureFlags, kycReview];

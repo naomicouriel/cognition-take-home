@@ -2,6 +2,7 @@ import { SAMPLE_FLAGS } from "@/apps/feature-flags/sample-data";
 import { mutate, runAsSystem, db } from "@/platform/data";
 import { hashPassword } from "@/platform/auth/password";
 import { SYSTEM_ACTOR, type RoleName } from "@/platform/rbac";
+import { seedKycReview } from "./seeds/kyc-review";
 
 const DEMO_USERS: Array<{
   email: string;
@@ -97,8 +98,10 @@ async function main() {
     });
   }
 
+  await seedKycReview();
+
   console.log(
-    "Seeded demo users (password: password), one access request and sample feature flags.",
+    "Seeded demo users (password: password), one access request, sample feature flags and KYC cases.",
   );
 }
 

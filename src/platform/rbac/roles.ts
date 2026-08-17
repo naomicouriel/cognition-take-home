@@ -20,6 +20,19 @@ export const ROLES = {
     "access_request.read",
     "access_request.approve",
     "feature_flags.read",
+    // Can watch the KYC queue, but sees no PII and cannot decide.
+    "kyc_review.read",
+  ],
+  compliance_reviewer: [
+    // The login page redirects everyone to /apps/directory, so every role
+    // needs to be able to render it.
+    "directory.read",
+    "access_request.read",
+    "kyc_review.read",
+    "kyc_review.decide",
+    "pii.customer_name",
+    "pii.kyc_document_number",
+    "pii.date_of_birth",
   ],
   staff: ["directory.read", "access_request.read", "feature_flags.read"],
 } as const satisfies Record<string, readonly string[]>;
