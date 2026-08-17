@@ -3,6 +3,14 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 /** Local dev credentials only; a real deployment uses the OIDC provider. */
 const PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };
 
+/**
+ * The cost floor an existing hash may have been written with, and the implicit
+ * cost of legacy `salt:hash` values. Both are independent of `PARAMS`, so
+ * raising `PARAMS.N` re-hashes future passwords without invalidating old ones.
+ */
+const MIN_N = 16384;
+const LEGACY = { N: 16384, r: 8, p: 1, keylen: 64 };
+
 /** `scrypt$N$r$p$salt$hash`: the cost is stored so it can be raised later. */
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -39,10 +47,11 @@ function derive(password: string, salt: string, params: Params): Buffer {
  */
 function parse(stored: string) {
   if (stored.includes(":") && !stored.includes("$")) {
-    // Legacy hashes with implicit defaults, kept verifiable.
+    // Legacy hashes carry no parameters; they were written with LEGACY.
     const [salt, hash] = stored.split(":");
     if (!isHex(salt) || !isHex(hash)) return null;
-    return { salt, hash, params: { ...PARAMS, keylen: hash.length / 2 } };
+    const params = { ...LEGACY, keylen: hash.length / 2 };
+    return isUsable(params) ? { salt, hash, params } : null;
   }
 
   const parts = stored.split("$");
@@ -57,20 +66,21 @@ function parse(stored: string) {
     p: Number(p),
     keylen: hash.length / 2,
   };
-  if (
-    !isPowerOfTwo(params.N) ||
-    params.N < PARAMS.N ||
-    params.N > 1 << 20 ||
-    !isCount(params.r) ||
-    !isCount(params.p) ||
+  return isUsable(params) ? { salt, hash, params } : null;
+}
+
+function isUsable(params: Params): boolean {
+  return (
+    isPowerOfTwo(params.N) &&
+    params.N >= MIN_N &&
+    params.N <= 1 << 20 &&
+    isCount(params.r) &&
+    isCount(params.p) &&
     // Bounds the memory scryptSync is allowed to ask for (N*r*128 bytes).
-    params.N * params.r > 1 << 22 ||
-    params.keylen < 16 ||
-    params.keylen > 128
-  ) {
-    return null;
-  }
-  return { salt, hash, params };
+    params.N * params.r <= 1 << 22 &&
+    params.keylen >= 16 &&
+    params.keylen <= 128
+  );
 }
 
 function isHex(value: string | undefined): value is string {
