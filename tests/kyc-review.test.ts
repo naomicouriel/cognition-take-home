@@ -107,4 +107,20 @@ describe("KYC review queue", () => {
     expect(entry?.before).toMatchObject({ status: "pending" });
     expect(entry?.after).toMatchObject({ status: "rejected" });
   });
+
+  it("refuses a second decision on an already decided case", async () => {
+    await expect(
+      mutate({
+        actor: COMPLIANCE,
+        action: "kyc_case.approve",
+        resource: "KycCase",
+        resourceId: caseId,
+        fn: (tx) =>
+          tx.kycCase.update({
+            where: { id: caseId, status: "pending" },
+            data: { status: "approved" },
+          }),
+      }),
+    ).rejects.toThrow();
+  });
 });

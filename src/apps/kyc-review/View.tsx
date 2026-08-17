@@ -13,6 +13,7 @@ import {
   RISK_LEVELS,
   decisionSchema,
   queueFilterSchema,
+  type QueueFilter,
 } from "./schema";
 
 export async function KycReviewView({
@@ -21,11 +22,14 @@ export async function KycReviewView({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const actor = await requirePermission(manifest.nav.permission);
-  const filter = queueFilterSchema.parse({
+  // Unknown filter values in a stale or hand-edited link fall back to the
+  // unfiltered queue rather than an error page.
+  const parsed = queueFilterSchema.safeParse({
     status: single(searchParams?.status),
     riskLevel: single(searchParams?.riskLevel),
     caseId: single(searchParams?.caseId),
   });
+  const filter: QueueFilter = parsed.success ? parsed.data : {};
 
   const { cases, selected } = await asActor(actor, async () => ({
     cases: await db.kycCase.findMany({

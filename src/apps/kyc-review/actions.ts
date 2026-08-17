@@ -32,7 +32,9 @@ export async function decideCase(caseId: string, formData: FormData) {
     resourceId: caseId,
     fn: (tx) =>
       tx.kycCase.update({
-        where: { id: caseId },
+        // Non-unique filter alongside the id: the pending check is atomic, so
+        // two reviewers racing cannot both record a decision.
+        where: { id: caseId, status: "pending" },
         data: {
           status: STATUS_FOR_DECISION[decision],
           decidedAt: new Date(),
