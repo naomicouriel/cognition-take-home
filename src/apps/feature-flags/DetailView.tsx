@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/platform/data";
+import { can } from "@/platform/rbac";
 import { asActor, requirePermission } from "@/platform/server";
 import { DataTable } from "@/platform/ui/DataTable";
 import { DetailPanel } from "@/platform/ui/DetailPanel";
@@ -12,13 +13,19 @@ import { stateOf } from "./schema";
 export async function FeatureFlagDetailView({ id }: { id: string }) {
   const actor = await requirePermission(manifest.nav.permission);
 
+  // The data layer does not gate AuditLog reads, so the change history — actor
+  // emails and before/after states — is only fetched for actors who may toggle.
+  const maySeeHistory = can(actor, TOGGLE_PERMISSION);
+
   const { flag, history } = await asActor(actor, async () => ({
     flag: await db.featureFlag.findUnique({ where: { id } }),
-    history: await db.auditLog.findMany({
-      where: { resource: "FeatureFlag", resourceId: id },
-      orderBy: { at: "desc" },
-      take: 10,
-    }),
+    history: maySeeHistory
+      ? await db.auditLog.findMany({
+          where: { resource: "FeatureFlag", resourceId: id },
+          orderBy: { at: "desc" },
+          take: 10,
+        })
+      : [],
   }));
 
   if (!flag) notFound();
@@ -50,25 +57,27 @@ export async function FeatureFlagDetailView({ id }: { id: string }) {
         }}
       />
 
-      <div>
-        <h2 className="mb-2 text-lg font-semibold">Change history</h2>
-        <DataTable
-          emptyMessage="No changes recorded yet."
-          rows={history.map((entry) => ({
-            id: entry.id,
-            at: formatDate(entry.at),
-            actor: entry.actorEmail,
-            action: entry.action,
-            change: describe(entry.before, entry.after),
-          }))}
-          columns={[
-            { key: "at", label: "When" },
-            { key: "actor", label: "Actor" },
-            { key: "action", label: "Action" },
-            { key: "change", label: "Change" },
-          ]}
-        />
-      </div>
+      {maySeeHistory && (
+        <div>
+          <h2 className="mb-2 text-lg font-semibold">Change history</h2>
+          <DataTable
+            emptyMessage="No changes recorded yet."
+            rows={history.map((entry) => ({
+              id: entry.id,
+              at: formatDate(entry.at),
+              actor: entry.actorEmail,
+              action: entry.action,
+              change: describe(entry.before, entry.after),
+            }))}
+            columns={[
+              { key: "at", label: "When" },
+              { key: "actor", label: "Actor" },
+              { key: "action", label: "Action" },
+              { key: "change", label: "Change" },
+            ]}
+          />
+        </div>
+      )}
     </div>
   );
 }

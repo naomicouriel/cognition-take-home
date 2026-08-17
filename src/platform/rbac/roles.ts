@@ -7,7 +7,6 @@ export const PERMISSION_WILDCARD = "*" as const;
 export const ROLES = {
   admin: [PERMISSION_WILDCARD],
   platform_admin: [
-    "directory.read",
     "feature_flags.read",
     "feature_flags.toggle",
   ],
