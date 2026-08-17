@@ -29,7 +29,9 @@ export async function KycReviewView({
     riskLevel: single(searchParams?.riskLevel),
     caseId: single(searchParams?.caseId),
   });
-  const filter: QueueFilter = parsed.success ? parsed.data : {};
+  const filter: QueueFilter = parsed.success
+    ? parsed.data
+    : { caseId: single(searchParams?.caseId) };
 
   const { cases, selected } = await asActor(actor, async () => ({
     cases: await db.kycCase.findMany({
@@ -38,7 +40,7 @@ export async function KycReviewView({
         ...(filter.riskLevel ? { riskLevel: filter.riskLevel } : {}),
       },
       include: { _count: { select: { documents: true } } },
-      orderBy: [{ status: "asc" }, { submittedAt: "asc" }],
+      orderBy: { submittedAt: "asc" },
     }),
     selected: filter.caseId
       ? await db.kycCase.findUnique({
@@ -65,7 +67,7 @@ export async function KycReviewView({
       </div>
 
       <QueueTable
-        rows={cases.map((kycCase) => ({
+        rows={queueOrder(cases).map((kycCase) => ({
           id: kycCase.id,
           reference: kycCase.reference,
           customer: pii(kycCase, "customerName"),
@@ -174,6 +176,16 @@ function pii<T extends object>(row: T, field: string): string {
   const value = (row as Record<string, unknown>)[field];
   if (!(field in row) || value === null || value === undefined) return RESTRICTED;
   return String(value);
+}
+
+/**
+ * Work first: `status` is a string column, so the database can only order it
+ * alphabetically ("approved" before "pending"). Rank it here instead, keeping
+ * the oldest-first order inside each group.
+ */
+function queueOrder<T extends { status: string }>(rows: T[]): T[] {
+  const rank = (status: string) => (status === "pending" ? 0 : 1);
+  return [...rows].sort((a, b) => rank(a.status) - rank(b.status));
 }
 
 function single(value: string | string[] | undefined) {
