@@ -24,7 +24,7 @@ The container is named `cognition-take-home-db-1`.
 Seeded users (password `password` for all):
 - `admin@example.com` — role `admin` (permission wildcard)
 - `platform-admin@example.com` — role `platform_admin`
-- `compliance@example.com` — role `compliance_reviewer` (the only role that may decide KYC cases)
+- `compliance@example.com` — role `compliance_reviewer` (the only role that sees KYC PII and can approve/reject)
 - `reviewer@example.com` — role `reviewer`
 - `staff@example.com` — role `staff` (read-only for most apps)
 

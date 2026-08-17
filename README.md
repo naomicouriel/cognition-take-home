@@ -83,3 +83,34 @@ the app appears in the nav for any role holding `inspections.read` (grant it in
 only OIDC provider against any IdP; disable dev credentials in production. Users
 arriving from the IdP are provisioned through `mutate()`, so provisioning is
 audited too.
+
+## Limitations
+
+- **OIDC is unverified.** The provider is wired up but has never run against a
+  real IdP; only the local dev credentials provider has been exercised.
+- **`DataTable` filters on the client.** It text-matches the rows already sent
+  to the browser: no pagination, no sorting, no server-side filtering. Apps that
+  need filtering in the query write it themselves (feature flags parse the
+  search params and push the predicate into the `where` clause).
+- **No role administration.** `src/platform/rbac/roles.ts` is hand-edited and
+  redeployed. A manifest cannot declare a role, and there is no UI for
+  assigning permissions.
+- **`runAsSystem` is contained by a test, not by the module system.** It is a
+  normal export of `src/platform/data`; `tests/no-prisma-import.test.ts` is what
+  stops app modules from calling it, so a bypass fails CI rather than the build.
+- **The defensive relation strip matches field names globally.** `stripResult`
+  removes any key whose name is a PII field the actor lacks, at any depth and on
+  any model. Two models declaring the same field name cannot be gated
+  independently through that path, and an unrelated field sharing the name is
+  dropped too. The query-level `omit`/`select` gating is per model.
+- **`AuditLog` is exempt from per-model read authorization.** The read guard in
+  `src/platform/data/client.ts` skips `AuditLog` (`else if (model !==
+  "AuditLog")`), so a manifest cannot declare an `audit.read` permission and any
+  actor whose app reads history sees actor emails and snapshots. The
+  feature-flags change history is therefore gated in app code (on
+  `feature_flags.toggle`) — a stopgap, not an enforcement point.
+- **The scaffolding CLI stops at the app module.** It generates the manifest,
+  view, actions, route and registry entry, and only a `<key>.read` permission.
+  Prisma models, migrations, seed hooks, tests, detail routes and write
+  permissions are still hand-written, so every new app edits
+  `prisma/schema.prisma`, `prisma/seed.ts` and `roles.ts` by hand.
